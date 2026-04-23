@@ -231,6 +231,91 @@ resource "aws_lambda_function" "extract_chart" {
   }
 }
 
+# Lambda: API handler
+data "archive_file" "api" {
+  type        = "zip"
+  source_file = "${path.module}/../lambda/api/index.py"
+  output_path = "${path.module}/../lambda/api/function.zip"
+}
+
+resource "aws_lambda_function" "api" {
+  function_name    = "${var.project}-api"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "index.handler"
+  runtime          = "python3.12"
+  timeout          = 30
+  memory_size      = 256
+  filename         = data.archive_file.api.output_path
+  source_code_hash = data.archive_file.api.output_base64sha256
+
+  environment {
+    variables = {
+      CHARTS_TABLE     = aws_dynamodb_table.charts.name
+      TEMPLATES_TABLE  = aws_dynamodb_table.templates.name
+      EXTRACT_FUNCTION = aws_lambda_function.extract_chart.function_name
+    }
+  }
+}
+
+# Add Lambda invoke permission for API Lambda to call extract Lambda
+resource "aws_iam_role_policy" "lambda_invoke_policy" {
+  name = "${var.project}-lambda-invoke-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "lambda:InvokeFunction"
+      Resource = aws_lambda_function.extract_chart.arn
+    }]
+  })
+}
+
+# API Gateway HTTP API
+resource "aws_apigatewayv2_api" "main" {
+  name          = "${var.project}-api"
+  protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = ["*"]
+    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
+    allow_headers = ["Content-Type"]
+    max_age       = 3600
+  }
+}
+
+resource "aws_apigatewayv2_integration" "lambda" {
+  api_id                 = aws_apigatewayv2_api.main.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.api.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.main.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "apigw" {
+  statement_id  = "AllowAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
+}
+
+output "api_url" {
+  value = aws_apigatewayv2_stage.default.invoke_url
+}
+
 output "extract_chart_function_name" {
   value = aws_lambda_function.extract_chart.function_name
 }
