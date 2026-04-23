@@ -640,3 +640,96 @@ $ aws s3 ls s3://medspa-storage-779846822196/transcripts/
 | S3 save | Transcript at transcripts/verify-test-005.txt | ✅ PASS |
 
 **All 7 checks passed. Test data cleaned up.**
+
+---
+
+# Verification Report — Subtask 6: REST API for Chart CRUD and Session Management
+
+**Date**: 2026-04-23T02:16Z
+**Verifier**: verifier-1
+**API URL**: https://haywkpmggd.execute-api.us-east-1.amazonaws.com
+**Result**: ✅ ALL CHECKS PASSED
+
+---
+
+## 1. GET /templates — returns chart templates list
+
+```
+$ curl -s -w "\nHTTP:%{http_code}" https://haywkpmggd.execute-api.us-east-1.amazonaws.com/templates
+HTTP:200
+{"templates": [
+  {"templateId": "aesthetic", "name": "Aesthetic Treatment Form", "fields": {...}},
+  {"templateId": "neuromodulator", "name": "Neuromodulator Treatment Form", "fields": {...}},
+  {"templateId": "filler", "name": "Filler Treatment Form", "fields": {...}}
+]}
+```
+**Result**: ✅ PASS — 200, returns all 3 templates with field schemas
+
+## 2. POST /sessions — creates a DynamoDB record
+
+```
+$ curl -s -X POST .../sessions -d '{"templateId":"neuromodulator"}'
+HTTP:201
+{"sessionId": "5b88306b-...", "templateId": "neuromodulator", "status": "created", "createdAt": "2026-04-23T02:15:07.946526", "transcript": "", "chart": {}}
+```
+**Result**: ✅ PASS — 201 Created, returns sessionId
+
+## 3. GET /sessions/{id} — returns transcript and chart
+
+```
+$ curl -s .../sessions/5b88306b-...
+HTTP:200
+{"sessionId": "5b88306b-...", "templateId": "neuromodulator", "status": "created", "transcript": "", "chart": {}}
+```
+**Result**: ✅ PASS — 200, returns session with transcript and chart fields
+
+## 4. POST /sessions/{id}/extract — triggers Bedrock and returns filled chart
+
+```
+$ curl -s -X POST .../sessions/5b88306b-.../extract -d '{"transcript":"Patient John Doe received 25 units of Dysport..."}'
+HTTP:200
+{"sessionId": "5b88306b-...", "chart": {"patientName": "John Doe", "product": "Dysport", "totalUnits": 40, "treatmentAreas": ["glabella", "forehead lines"], ...}, "confidence": {"patientName": 0.95, ...}}
+```
+**Result**: ✅ PASS — 200, returns extracted chart with confidence scores
+
+## 5. PUT /sessions/{id}/chart — updates chart in DynamoDB
+
+```
+$ curl -s -X PUT .../sessions/5b88306b-.../chart -d '{"chart":{"patientName":"John Doe","provider":"Dr. Smith",...}}'
+HTTP:200
+{"sessionId": "5b88306b-...", "status": "reviewed"}
+
+$ curl -s .../sessions/5b88306b-...  (verify update)
+{"chart": {"patientName": "John Doe", "provider": "Dr. Smith", ...}, "status": "reviewed", "updatedAt": "2026-04-23T02:15:25.384413"}
+```
+**Result**: ✅ PASS — 200, chart updated, status changed to "reviewed"
+
+## 6. CORS headers present
+
+```
+$ curl -s -D - -H "Origin: http://localhost" .../templates
+access-control-allow-origin: *
+
+$ curl -s -X OPTIONS -H "Origin: http://localhost" -H "Access-Control-Request-Method: GET" .../templates
+access-control-allow-origin: *
+access-control-allow-methods: GET,OPTIONS,POST,PUT
+access-control-allow-headers: content-type
+access-control-max-age: 3600
+```
+**Result**: ✅ PASS — CORS enabled with wildcard origin
+
+---
+
+## Summary
+
+| Endpoint | Method | Status | Result |
+|----------|--------|--------|--------|
+| /templates | GET | 200 | ✅ PASS |
+| /sessions | POST | 201 | ✅ PASS |
+| /sessions/{id} | GET | 200 | ✅ PASS |
+| /sessions/{id}/extract | POST | 200 | ✅ PASS |
+| /sessions/{id}/chart | PUT | 200 | ✅ PASS |
+| CORS preflight | OPTIONS | 200 | ✅ PASS |
+| CORS response headers | - | - | ✅ PASS |
+
+**All 7 checks passed. Test data cleaned up.**
