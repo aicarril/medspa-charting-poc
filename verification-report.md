@@ -334,3 +334,88 @@ $ cat /shared-repo/config.json
 | Config reference | vocabularyName in config.json | ✅ PASS |
 
 **All 6 checks passed.**
+
+---
+
+# Verification Report — Subtask 3: Chart Templates Seeded in DynamoDB
+
+**Date**: 2026-04-23T02:01Z
+**Verifier**: verifier-1
+**Result**: ✅ ALL CHECKS PASSED
+
+---
+
+## 1. Templates table contains at least 3 chart templates
+
+```
+$ aws dynamodb scan --table-name medspa-templates --region us-east-1 --query '{Count:Count,Items:Items[*].{id:templateId.S,name:name.S}}'
+Count: 3
+Items:
+  - {id: "aesthetic", name: "Aesthetic Treatment Form"}
+  - {id: "neuromodulator", name: "Neuromodulator Treatment Form"}
+  - {id: "filler", name: "Filler Treatment Form"}
+```
+**Result**: ✅ PASS — 3 templates present
+
+## 2. Neuromodulator template has correct schema
+
+Fields in neuromodulator template (15 fields):
+- patientName (string), dateOfService (string), provider (string)
+- product (string — "Botox/Dysport"), lotNumber (string), dilution (string)
+- treatmentAreas (array — items: {area: string, units: number})
+- totalUnits (number), needleSize (string)
+- consentObtained (boolean), prePhotos (boolean)
+- adverseReactions (string), postCareInstructions (string)
+- followUpDate (string), notes (string)
+
+**Result**: ✅ PASS — Matches expected neuromodulator treatment form schema with area+units structure
+
+## 3. Filler template has correct schema
+
+Fields in filler template (16 fields):
+- patientName, dateOfService, provider, product (Juvederm/Restylane/Sculptra/Radiesse)
+- treatmentAreas (array — items: {area, syringes: number, technique: string})
+- totalSyringes (number), cannulaOrNeedle, lotNumber, anesthetic
+- aspirationPerformed (boolean), consentObtained (boolean), prePhotos (boolean)
+- complications, postCareInstructions, followUpDate, notes
+
+**Result**: ✅ PASS
+
+## 4. Aesthetic template has correct schema
+
+Fields in aesthetic template (15 fields):
+- patientName, dateOfService, provider, treatmentType (microneedling/dermaplaning/chemical peel/IPL/laser)
+- treatmentAreas (array — items: {area, settings}), deviceSettings, skinType (Fitzpatrick)
+- productsUsed, skinResponse (erythema/edema), contraindications
+- consentObtained (boolean), prePhotos (boolean)
+- postCareInstructions, followUpDate, notes
+
+**Result**: ✅ PASS
+
+## 5. Templates retrievable by templateId
+
+```
+$ aws dynamodb get-item --table-name medspa-templates --key '{"templateId":{"S":"neuromodulator"}}' --query 'Item.{templateId:templateId.S,name:name.S}'
+{"templateId": "neuromodulator", "name": "Neuromodulator Treatment Form"}
+
+$ aws dynamodb get-item --table-name medspa-templates --key '{"templateId":{"S":"filler"}}' --query 'Item.{templateId:templateId.S,name:name.S}'
+{"templateId": "filler", "name": "Filler Treatment Form"}
+
+$ aws dynamodb get-item --table-name medspa-templates --key '{"templateId":{"S":"aesthetic"}}' --query 'Item.{templateId:templateId.S,name:name.S}'
+{"templateId": "aesthetic", "name": "Aesthetic Treatment Form"}
+```
+**Result**: ✅ PASS — All 3 retrievable by primary key
+
+---
+
+## Summary
+
+| Check | Detail | Result |
+|-------|--------|--------|
+| Template count | 3 templates | ✅ PASS |
+| Neuromodulator schema | 15 fields, area+units structure | ✅ PASS |
+| Filler schema | 16 fields, area+syringes+technique | ✅ PASS |
+| Aesthetic schema | 15 fields, device settings + skin type | ✅ PASS |
+| Retrieval by templateId | All 3 retrievable | ✅ PASS |
+
+**All 5 checks passed.**
