@@ -4,5 +4,6 @@
   "chartsTable": "medspa-charts",
   "templatesTable": "medspa-templates",
   "lambdaRoleArn": "arn:aws:iam::779846822196:role/medspa-lambda-role",
-  "vocabularyName": "medspa-vocabulary"
+  "vocabularyName": "medspa-vocabulary",
+  "identityPoolId": "us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b"
 }

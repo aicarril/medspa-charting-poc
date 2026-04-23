@@ -133,6 +133,74 @@ resource "aws_iam_role_policy" "lambda_policy" {
   })
 }
 
+# Cognito Identity Pool for browser access
+resource "aws_cognito_identity_pool" "main" {
+  identity_pool_name               = "${var.project}-identity-pool"
+  allow_unauthenticated_identities = true
+  allow_classic_flow               = true
+}
+
+resource "aws_iam_role" "cognito_unauth" {
+  name = "${var.project}-cognito-unauth-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Federated = "cognito-identity.amazonaws.com" }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "cognito-identity.amazonaws.com:aud" = aws_cognito_identity_pool.main.id
+        }
+        "ForAnyValue:StringLike" = {
+          "cognito-identity.amazonaws.com:amr" = "unauthenticated"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cognito_unauth_policy" {
+  name = "${var.project}-cognito-unauth-policy"
+  role = aws_iam_role.cognito_unauth.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["transcribe:StartStreamTranscription", "transcribe:StartStreamTranscriptionWebSocket"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:GetObject"]
+        Resource = "${aws_s3_bucket.storage.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:Scan"]
+        Resource = [
+          aws_dynamodb_table.charts.arn,
+          aws_dynamodb_table.templates.arn
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_cognito_identity_pool_roles_attachment" "main" {
+  identity_pool_id = aws_cognito_identity_pool.main.id
+  roles = {
+    unauthenticated = aws_iam_role.cognito_unauth.arn
+  }
+}
+
+output "identity_pool_id" {
+  value = aws_cognito_identity_pool.main.id
+}
+
 output "s3_bucket_name" {
   value = aws_s3_bucket.storage.id
 }
