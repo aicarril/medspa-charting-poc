@@ -127,7 +127,10 @@ resource "aws_iam_role_policy" "lambda_policy" {
       {
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel"]
-        Resource = "arn:aws:bedrock:*:*:foundation-model/*"
+        Resource = [
+          "arn:aws:bedrock:*:*:foundation-model/*",
+          "arn:aws:bedrock:*:*:inference-profile/*"
+        ]
       }
     ]
   })
@@ -199,6 +202,41 @@ resource "aws_cognito_identity_pool_roles_attachment" "main" {
 
 output "identity_pool_id" {
   value = aws_cognito_identity_pool.main.id
+}
+
+# Lambda: Chart extraction
+data "archive_file" "extract_chart" {
+  type        = "zip"
+  source_file = "${path.module}/../lambda/extract-chart/index.py"
+  output_path = "${path.module}/../lambda/extract-chart/function.zip"
+}
+
+resource "aws_lambda_function" "extract_chart" {
+  function_name    = "${var.project}-extract-chart"
+  role             = aws_iam_role.lambda_role.arn
+  handler          = "index.handler"
+  runtime          = "python3.12"
+  timeout          = 60
+  memory_size      = 256
+  filename         = data.archive_file.extract_chart.output_path
+  source_code_hash = data.archive_file.extract_chart.output_base64sha256
+
+  environment {
+    variables = {
+      CHARTS_TABLE    = aws_dynamodb_table.charts.name
+      TEMPLATES_TABLE = aws_dynamodb_table.templates.name
+      S3_BUCKET       = aws_s3_bucket.storage.id
+      MODEL_ID        = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    }
+  }
+}
+
+output "extract_chart_function_name" {
+  value = aws_lambda_function.extract_chart.function_name
+}
+
+output "extract_chart_function_arn" {
+  value = aws_lambda_function.extract_chart.arn
 }
 
 output "s3_bucket_name" {
