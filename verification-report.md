@@ -517,3 +517,126 @@ $ aws cognito-identity get-identity-pool-roles --identity-pool-id us-east-1:76de
 | Config reference | identityPoolId in config.json | ✅ PASS |
 
 **All 7 checks passed.**
+
+---
+
+# Verification Report — Subtask 5: Bedrock Claude Chart Extraction Lambda
+
+**Date**: 2026-04-23T02:11Z
+**Verifier**: verifier-1
+**Result**: ✅ ALL CHECKS PASSED
+
+---
+
+## 1. Lambda exists and is Active
+
+```
+$ aws lambda get-function --function-name medspa-extract-chart
+{
+    "FunctionName": "medspa-extract-chart",
+    "Runtime": "python3.12",
+    "Role": "arn:aws:iam::779846822196:role/medspa-lambda-role",
+    "Handler": "index.handler",
+    "Timeout": 60,
+    "MemorySize": 256,
+    "State": "Active",
+    "Environment": {
+        "CHARTS_TABLE": "medspa-charts",
+        "S3_BUCKET": "medspa-storage-779846822196",
+        "MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "TEMPLATES_TABLE": "medspa-templates"
+    }
+}
+```
+**Result**: ✅ PASS — Active, python3.12, 256MB, 60s timeout, correct env vars
+
+## 2. Lambda invocation with sample transcript returns valid chart JSON
+
+```
+$ aws lambda invoke --function-name medspa-extract-chart --payload '{
+  "sessionId":"verify-test-005",
+  "templateId":"neuromodulator",
+  "transcript":"Patient Jane Smith came in today for Botox treatment. We administered 20 units of Botox to the glabella, 10 units to each crows feet area, and 12 units to the forehead lines. Total of 52 units. Lot number BX2024-456..."
+}'
+StatusCode: 200
+Response body:
+{
+  "sessionId": "verify-test-005",
+  "chart": {
+    "patientName": "Jane Smith",
+    "product": "Botox",
+    "treatmentAreas": ["glabella", "crows feet", "forehead lines"],
+    "totalUnits": 52,
+    "lotNumber": "BX2024-456",
+    "dilution": "100 units per 2.5 mL saline",
+    "needleSize": "30 gauge",
+    "consentObtained": true,
+    "prePhotos": true,
+    "postCareInstructions": "No lying down for 4 hours...",
+    "followUpDate": "2 weeks",
+    "adverseReactions": "No adverse reactions",
+    ...
+  },
+  "confidence": {
+    "patientName": 0.95, "product": 0.95, "totalUnits": 0.95,
+    "treatmentAreas": 0.95, "lotNumber": 0.95, ...
+  },
+  "templateId": "neuromodulator"
+}
+```
+**Result**: ✅ PASS — Valid chart JSON with all template fields
+
+## 3. Medical spa terms correctly extracted
+
+- Product: "Botox" ✅
+- Treatment areas: glabella, crows feet, forehead lines ✅
+- Total units: 52 ✅
+- Lot number: BX2024-456 ✅
+- Dilution: 100 units per 2.5 mL saline ✅
+
+**Result**: ✅ PASS
+
+## 4. Confidence scores present
+
+All 15 fields have confidence scores (0.0 to 0.95). Fields not mentioned in transcript (provider, dateOfService) correctly scored 0.0.
+
+**Result**: ✅ PASS
+
+## 5. Chart record saved to DynamoDB
+
+```
+$ aws dynamodb get-item --table-name medspa-charts --key '{"sessionId":{"S":"verify-test-005"}}'
+Item found with:
+  - sessionId: verify-test-005
+  - status: "extracted"
+  - templateId: "neuromodulator"
+  - chart: {patientName: "Jane Smith", product: "Botox", totalUnits: 52, ...}
+  - confidence: {patientName: 0.95, ...}
+  - transcript: (full text)
+  - createdAt: "2026-04-23T02:10:13.508503"
+```
+**Result**: ✅ PASS
+
+## 6. Raw transcript saved to S3
+
+```
+$ aws s3 ls s3://medspa-storage-779846822196/transcripts/
+2026-04-23 02:10:14        563 verify-test-005.txt
+```
+**Result**: ✅ PASS
+
+---
+
+## Summary
+
+| Check | Detail | Result |
+|-------|--------|--------|
+| Lambda exists | medspa-extract-chart, Active | ✅ PASS |
+| Runtime/config | python3.12, 256MB, 60s, correct env vars | ✅ PASS |
+| Invocation | HTTP 200, valid chart JSON | ✅ PASS |
+| Medical terms extraction | Botox, glabella, 52 units, etc. | ✅ PASS |
+| Confidence scores | Present for all 15 fields | ✅ PASS |
+| DynamoDB save | Chart record with status=extracted | ✅ PASS |
+| S3 save | Transcript at transcripts/verify-test-005.txt | ✅ PASS |
+
+**All 7 checks passed. Test data cleaned up.**
