@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedSpa Charting — Provider Interface</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f5f5f5;color:#333}
+header{background:#1a5276;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:1.2rem}
+.controls{display:flex;gap:8px;align-items:center}
+select,button{padding:8px 16px;border-radius:6px;border:1px solid #ccc;font-size:0.9rem;cursor:pointer}
+button{background:#2980b9;color:#fff;border:none}
+button:hover{background:#1a6da0}
+button:disabled{background:#95a5a6;cursor:not-allowed}
+button.danger{background:#c0392b}
+button.danger:hover{background:#a93226}
+button.success{background:#27ae60}
+.main{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px;height:calc(100vh - 56px)}
+.panel{background:#fff;border-radius:8px;padding:16px;overflow-y:auto;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.panel h2{font-size:1rem;margin-bottom:12px;color:#1a5276;border-bottom:2px solid #eee;padding-bottom:8px}
+#transcript{min-height:200px;white-space:pre-wrap;font-size:0.9rem;line-height:1.6;color:#555}
+#transcript .partial{color:#999;font-style:italic}
+.field-group{margin-bottom:12px}
+.field-group label{display:block;font-size:0.8rem;color:#666;margin-bottom:4px;font-weight:600}
+.field-group input,.field-group textarea,.field-group select{width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:0.9rem}
+.field-group textarea{height:60px;resize:vertical}
+.confidence{font-size:0.7rem;color:#888;margin-top:2px}
+.confidence.high{color:#27ae60}
+.confidence.medium{color:#f39c12}
+.confidence.low{color:#c0392b}
+.status-bar{background:#eee;padding:8px 16px;font-size:0.8rem;display:flex;justify-content:space-between;align-items:center}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.status-dot.active{background:#27ae60}
+.status-dot.inactive{background:#95a5a6}
+.mode-toggle{display:flex;align-items:center;gap:8px;margin-left:16px}
+.mode-toggle label{font-size:0.85rem}
+.sample-text{background:#fef9e7;border:1px solid #f9e79f;border-radius:6px;padding:12px;margin-top:12px;font-size:0.85rem;line-height:1.5;display:none}
+.sample-text h3{font-size:0.9rem;margin-bottom:8px;color:#7d6608}
+#chartFields{min-height:200px}
+.mic-indicator{display:inline-block;width:12px;height:12px;background:#c0392b;border-radius:50%;animation:pulse 1s infinite;margin-right:6px;vertical-align:middle;display:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏥 MedSpa Charting</h1>
+  <div class="controls">
+    <select id="templateSelect">
+      <option value="neuromodulator">Neuromodulator Treatment</option>
+      <option value="filler">Filler Treatment</option>
+      <option value="aesthetic">Aesthetic Treatment</option>
+    </select>
+    <div class="mode-toggle">
+      <input type="checkbox" id="dictationMode">
+      <label for="dictationMode">Post-Session Dictation</label>
+    </div>
+    <button id="startBtn" onclick="startSession()">▶ Start Session</button>
+    <button id="endBtn" onclick="endSession()" disabled class="danger">⏹ End Session</button>
+    <button id="saveBtn" onclick="saveChart()" disabled class="success">💾 Save Chart</button>
+  </div>
+</header>
+
+<div class="status-bar">
+  <span><span class="status-dot inactive" id="statusDot"></span><span id="statusText">Ready</span></span>
+  <span id="sessionInfo"></span>
+</div>
+
+<div class="main">
+  <div class="panel">
+    <h2><span class="mic-indicator" id="micIndicator"></span>Live Transcript</h2>
+    <div id="transcript">Press "Start Session" to begin recording...</div>
+    <div class="sample-text" id="sampleText">
+      <h3>📋 Sample Dictation (read aloud for demo):</h3>
+      <p>Patient Jane Smith presents today April 23rd 2026 for Botox treatment. I am Dr. Rodriguez. Treatment plan includes glabella with 20 units, forehead lines with 10 units, and crow's feet with 12 units each side. Total of 54 units of Botox administered. Lot number ABC123. Used 30 gauge needle with standard dilution of 2.5 milliliters saline. Informed consent was obtained. Pre-treatment photos taken. No adverse reactions observed. Post care instructions provided including no lying down for 4 hours and no strenuous exercise for 24 hours. Follow up scheduled in 2 weeks.</p>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Chart Fields</h2>
+    <div id="chartFields"><em>Chart fields will appear after extraction...</em></div>
+  </div>
+</div>
+
+<script type="module">
+import { CognitoIdentityClient } from "https://cdn.jsdelivr.net/npm/@aws-sdk/client-cognito-identity@3.620.0/+esm";
+import { fromCognitoIdentityPool } from "https://cdn.jsdelivr.net/npm/@aws-sdk/credential-provider-cognito-identity@3.620.0/+esm";
+import { TranscribeStreamingClient, StartStreamTranscriptionCommand } from "https://cdn.jsdelivr.net/npm/@aws-sdk/client-transcribe-streaming@3.620.0/+esm";
+
+const CONFIG = {
+  region: "us-east-1",
+  identityPoolId: "us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b",
+  apiUrl: "https://haywkpmggd.execute-api.us-east-1.amazonaws.com",
+  vocabularyName: "medspa-vocabulary"
+};
+
+let sessionId = null;
+let transcribeClient = null;
+let mediaStream = null;
+let audioContext = null;
+let fullTranscript = "";
+let isRecording = false;
+
+const credentials = fromCognitoIdentityPool({
+  client: new CognitoIdentityClient({ region: CONFIG.region }),
+  identityPoolId: CONFIG.identityPoolId
+});
+
+function setStatus(text, active) {
+  document.getElementById("statusText").textContent = text;
+  document.getElementById("statusDot").className = "status-dot " + (active ? "active" : "inactive");
+}
+
+async function* audioStream(stream) {
+  const ac = new AudioContext({ sampleRate: 16000 });
+  audioContext = ac;
+  const source = ac.createMediaStreamSource(stream);
+  const processor = ac.createScriptProcessor(4096, 1, 1);
+  source.connect(processor);
+  processor.connect(ac.destination);
+
+  const chunks = [];
+  let resolve;
+  let done = false;
+
+  processor.onaudioprocess = (e) => {
+    if (done) return;
+    const float32 = e.inputBuffer.getChannelData(0);
+    const pcm = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.floor(float32[i] * 32768)));
+    }
+    const chunk = { AudioEvent: { AudioChunk: new Uint8Array(pcm.buffer) } };
+    if (resolve) { const r = resolve; resolve = null; r({ value: chunk, done: false }); }
+    else chunks.push(chunk);
+  };
+
+  try {
+    while (!done) {
+      if (chunks.length > 0) yield chunks.shift();
+      else yield await new Promise(r => resolve = r);
+    }
+  } finally {
+    processor.disconnect();
+    source.disconnect();
+  }
+
+  window._stopAudio = () => { done = true; if (resolve) resolve({ done: true }); };
+}
+
+window.startSession = async function() {
+  const templateId = document.getElementById("templateSelect").value;
+
+  // Create session via API
+  const resp = await fetch(`${CONFIG.apiUrl}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId })
+  });
+  const data = await resp.json();
+  sessionId = data.sessionId;
+  document.getElementById("sessionInfo").textContent = `Session: ${sessionId.slice(0, 8)}...`;
+
+  fullTranscript = "";
+  document.getElementById("transcript").textContent = "";
+  document.getElementById("chartFields").innerHTML = "<em>Recording... chart will populate after extraction.</em>";
+
+  document.getElementById("startBtn").disabled = true;
+  document.getElementById("endBtn").disabled = false;
+  document.getElementById("saveBtn").disabled = true;
+  document.getElementById("templateSelect").disabled = true;
+  document.getElementById("micIndicator").style.display = "inline-block";
+
+  if (document.getElementById("dictationMode").checked) {
+    document.getElementById("sampleText").style.display = "block";
+  }
+
+  setStatus("Recording...", true);
+  isRecording = true;
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+
+    transcribeClient = new TranscribeStreamingClient({ region: CONFIG.region, credentials });
+
+    const audioGen = audioStream(mediaStream);
+
+    const command = new StartStreamTranscriptionCommand({
+      LanguageCode: "en-US",
+      MediaEncoding: "pcm",
+      MediaSampleRateHertz: 16000,
+      AudioStream: audioGen,
+      VocabularyName: CONFIG.vocabularyName
+    });
+
+    const response = await transcribeClient.send(command);
+
+    for await (const event of response.TranscriptResultStream) {
+      if (!isRecording) break;
+      if (event.TranscriptEvent) {
+        const results = event.TranscriptEvent.Transcript.Results;
+        if (results.length > 0) {
+          const result = results[0];
+          const text = result.Alternatives[0].Transcript;
+          if (!result.IsPartial) {
+            fullTranscript += text + " ";
+            document.getElementById("transcript").textContent = fullTranscript;
+          } else {
+            document.getElementById("transcript").innerHTML =
+              fullTranscript + '<span class="partial">' + text + '</span>';
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (isRecording) {
+      console.error("Transcribe error:", err);
+      setStatus("Error: " + err.message, false);
+    }
+  }
+};
+
+window.endSession = async function() {
+  isRecording = false;
+  document.getElementById("micIndicator").style.display = "none";
+  document.getElementById("sampleText").style.display = "none";
+
+  if (window._stopAudio) window._stopAudio();
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+  if (audioContext) audioContext.close();
+
+  document.getElementById("endBtn").disabled = true;
+  setStatus("Extracting chart...", true);
+
+  // Use transcript text or fallback
+  const transcript = fullTranscript.trim() || document.getElementById("transcript").textContent;
+
+  try {
+    const resp = await fetch(`${CONFIG.apiUrl}/sessions/${sessionId}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript, templateId: document.getElementById("templateSelect").value })
+    });
+    const data = await resp.json();
+    renderChart(data.chart, data.confidence);
+    setStatus("Chart extracted — review and save", false);
+    document.getElementById("saveBtn").disabled = false;
+  } catch (err) {
+    console.error("Extract error:", err);
+    setStatus("Extraction failed: " + err.message, false);
+  }
+
+  document.getElementById("startBtn").disabled = false;
+  document.getElementById("templateSelect").disabled = false;
+};
+
+function renderChart(chart, confidence) {
+  const container = document.getElementById("chartFields");
+  container.innerHTML = "";
+
+  for (const [key, value] of Object.entries(chart)) {
+    const group = document.createElement("div");
+    group.className = "field-group";
+
+    const label = document.createElement("label");
+    label.textContent = key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase());
+    group.appendChild(label);
+
+    let input;
+    if (typeof value === "boolean" || value === null && key.match(/consent|photos|aspiration/i)) {
+      input = document.createElement("select");
+      input.innerHTML = '<option value="">—</option><option value="true">Yes</option><option value="false">No</option>';
+      if (value !== null) input.value = String(value);
+    } else if (Array.isArray(value)) {
+      input = document.createElement("textarea");
+      input.value = JSON.stringify(value, null, 2);
+    } else if (typeof value === "string" && value.length > 50) {
+      input = document.createElement("textarea");
+      input.value = value || "";
+    } else {
+      input = document.createElement("input");
+      input.type = "text";
+      input.value = value !== null ? String(value) : "";
+    }
+    input.dataset.field = key;
+    group.appendChild(input);
+
+    if (confidence && confidence[key] !== undefined) {
+      const conf = document.createElement("div");
+      const score = confidence[key];
+      conf.className = "confidence " + (score >= 0.8 ? "high" : score >= 0.5 ? "medium" : "low");
+      conf.textContent = `Confidence: ${(score * 100).toFixed(0)}%`;
+      group.appendChild(conf);
+    }
+
+    container.appendChild(group);
+  }
+}
+
+window.saveChart = async function() {
+  const fields = document.querySelectorAll("#chartFields [data-field]");
+  const chart = {};
+  fields.forEach(f => {
+    let val = f.value;
+    if (f.tagName === "SELECT" && (val === "true" || val === "false")) val = val === "true";
+    else if (f.tagName === "TEXTAREA") { try { val = JSON.parse(val); } catch(e) {} }
+    chart[f.dataset.field] = val || null;
+  });
+
+  setStatus("Saving...", true);
+  try {
+    await fetch(`${CONFIG.apiUrl}/sessions/${sessionId}/chart`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chart })
+    });
+    setStatus("Chart saved ✓", false);
+  } catch (err) {
+    setStatus("Save failed: " + err.message, false);
+  }
+};
+
+// Load templates on init
+(async () => {
+  try {
+    const resp = await fetch(`${CONFIG.apiUrl}/templates`);
+    const data = await resp.json();
+    const select = document.getElementById("templateSelect");
+    select.innerHTML = "";
+    data.templates.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.templateId;
+      opt.textContent = t.name;
+      select.appendChild(opt);
+    });
+  } catch (e) { console.error("Failed to load templates:", e); }
+})();
+</script>
+</body>
+</html>
