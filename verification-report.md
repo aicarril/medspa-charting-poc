@@ -419,3 +419,101 @@ $ aws dynamodb get-item --table-name medspa-templates --key '{"templateId":{"S":
 | Retrieval by templateId | All 3 retrievable | ✅ PASS |
 
 **All 5 checks passed.**
+
+---
+
+# Verification Report — Subtask 4: Cognito Identity Pool
+
+**Date**: 2026-04-23T02:04Z
+**Verifier**: verifier-1
+**Result**: ✅ ALL CHECKS PASSED
+
+---
+
+## 1. Cognito Identity Pool exists with unauthenticated access
+
+```
+$ aws cognito-identity describe-identity-pool --identity-pool-id us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b
+{
+    "IdentityPoolId": "us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b",
+    "IdentityPoolName": "medspa-identity-pool",
+    "AllowUnauthenticatedIdentities": true,
+    "AllowClassicFlow": true
+}
+```
+**Result**: ✅ PASS — AllowUnauthenticatedIdentities=true
+
+## 2. Unauthenticated IAM role has correct trust policy
+
+```
+$ aws iam get-role --role-name medspa-cognito-unauth-role
+Trust Policy:
+  Principal: cognito-identity.amazonaws.com
+  Action: sts:AssumeRoleWithWebIdentity
+  Condition: aud = us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b, amr = unauthenticated
+```
+**Result**: ✅ PASS — Scoped to this identity pool, unauthenticated only
+
+## 3. Unauthenticated role has transcribe:StartStreamTranscription
+
+```
+$ aws iam get-role-policy --role-name medspa-cognito-unauth-role --policy-name medspa-cognito-unauth-policy
+Permissions:
+  - transcribe:StartStreamTranscription, transcribe:StartStreamTranscriptionWebSocket (Resource: *)
+  - s3:PutObject, s3:GetObject (Resource: arn:aws:s3:::medspa-storage-779846822196/*)
+  - dynamodb:PutItem, dynamodb:GetItem, dynamodb:Query, dynamodb:Scan (Resource: medspa-charts, medspa-templates)
+```
+**Result**: ✅ PASS — Transcribe streaming + scoped S3/DynamoDB access
+
+## 4. Browser can obtain temporary credentials
+
+```
+$ aws cognito-identity get-id --identity-pool-id us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b
+IDENTITY_ID=us-east-1:b5927e29-34af-cb39-7ee0-a698a097bf1b
+
+$ aws cognito-identity get-credentials-for-identity --identity-id us-east-1:b5927e29-34af-cb39-7ee0-a698a097bf1b
+{
+    "AccessKeyId": "ASIA3LET6FE2KRINZUIU",
+    "Expiration": 1776913409.0
+}
+```
+**Result**: ✅ PASS — Temporary credentials obtained successfully
+
+## 5. Identity Pool ID in config.json
+
+```
+$ cat /shared-repo/config.json
+{
+  "identityPoolId": "us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b",
+  ...
+}
+```
+**Result**: ✅ PASS
+
+## 6. Role attached to Identity Pool
+
+```
+$ aws cognito-identity get-identity-pool-roles --identity-pool-id us-east-1:76dedb29-db76-475f-bdb2-aafcfa06fe8b
+{
+    "Roles": {
+        "unauthenticated": "arn:aws:iam::779846822196:role/medspa-cognito-unauth-role"
+    }
+}
+```
+**Result**: ✅ PASS
+
+---
+
+## Summary
+
+| Check | Detail | Result |
+|-------|--------|--------|
+| Identity Pool exists | medspa-identity-pool | ✅ PASS |
+| Unauthenticated access | AllowUnauthenticatedIdentities=true | ✅ PASS |
+| Trust policy | Scoped to pool + unauthenticated | ✅ PASS |
+| Transcribe permission | StartStreamTranscription | ✅ PASS |
+| S3/DynamoDB permissions | Scoped to medspa resources | ✅ PASS |
+| Temp credentials | Successfully obtained | ✅ PASS |
+| Config reference | identityPoolId in config.json | ✅ PASS |
+
+**All 7 checks passed.**
