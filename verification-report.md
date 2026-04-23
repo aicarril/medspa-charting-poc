@@ -214,3 +214,123 @@ $ aws iam get-role-policy --role-name medspa-lambda-role --policy-name medspa-la
 | IAM permissions | S3 + DynamoDB + Logs + Bedrock | ✅ PASS |
 
 **All 11 checks passed. Test data cleaned up.**
+
+---
+
+# Verification Report — Subtask 2: Custom Vocabulary for Medical Spa Terminology
+
+**Date**: 2026-04-23T01:59Z
+**Verifier**: verifier-1
+**Result**: ✅ ALL CHECKS PASSED
+
+---
+
+## 1. Custom Vocabulary exists with status READY
+
+```
+$ aws transcribe get-vocabulary --vocabulary-name medspa-vocabulary --region us-east-1
+{
+    "VocabularyName": "medspa-vocabulary",
+    "LanguageCode": "en-US",
+    "VocabularyState": "READY",
+    "LastModifiedTime": 1776909364.233,
+    "DownloadUri": "https://s3.us-east-1.amazonaws.com/aws-transcribe-dictionary-model-us-east-1-prod/..."
+}
+```
+**Result**: ✅ PASS — Status READY, language en-US
+
+## 2. Vocabulary contains all required medical spa terms
+
+Downloaded vocabulary content from Transcribe DownloadUri. 41 terms total.
+
+Required terms from task spec (all present ✅):
+- Botox, Dysport, Juvederm, Restylane
+- microneedling, dermaplaning, chemical peel, IPL, laser resurfacing
+- hyaluronic acid, platelet-rich plasma, PRP
+- subcutaneous, intramuscular
+- erythema, edema, contraindication
+- informed consent, pre-treatment, post-treatment, glabella
+
+Additional terms (bonus):
+- neuromodulator, dermal filler, Sculptra, Radiesse, Kybella
+- nasolabial folds, marionette lines, crow's feet, forehead lines
+- periorbital, submental, lidocaine, epinephrine, cannula
+- aspiration, blanching, Tyndall effect, vascular occlusion
+- units, syringes
+
+```
+$ curl -s "<DownloadUri>" | head -42
+Phrase	IPA	SoundsLike	DisplayAs
+Botox			Botox
+Dysport			Dysport
+Juvederm			Juvederm
+Restylane			Restylane
+microneedling			microneedling
+dermaplaning			dermaplaning
+chemical-peel			chemical peel
+IPL			IPL
+laser-resurfacing			laser resurfacing
+hyaluronic-acid			hyaluronic acid
+platelet-rich-plasma			platelet-rich plasma
+PRP			PRP
+subcutaneous			subcutaneous
+intramuscular			intramuscular
+erythema			erythema
+edema			edema
+contraindication			contraindication
+informed-consent			informed consent
+pre-treatment			pre-treatment
+post-treatment			post-treatment
+glabella			glabella
+neuromodulator			neuromodulator
+dermal-filler			dermal filler
+Sculptra			Sculptra
+Radiesse			Radiesse
+Kybella			Kybella
+nasolabial-folds			nasolabial folds
+marionette-lines			marionette lines
+crows-feet			crow's feet
+forehead-lines			forehead lines
+periorbital			periorbital
+submental			submental
+lidocaine			lidocaine
+epinephrine			epinephrine
+cannula			cannula
+aspiration			aspiration
+blanching			blanching
+Tyndall-effect			Tyndall effect
+vascular-occlusion			vascular occlusion
+units			units
+syringes			syringes
+```
+**Result**: ✅ PASS — All 21 required terms present + 20 additional relevant terms
+
+## 3. Vocabulary name stored in config for browser SDK reference
+
+```
+$ cat /shared-repo/config.json
+{
+  "region": "us-east-1",
+  "s3Bucket": "medspa-storage-779846822196",
+  "chartsTable": "medspa-charts",
+  "templatesTable": "medspa-templates",
+  "lambdaRoleArn": "arn:aws:iam::779846822196:role/medspa-lambda-role",
+  "vocabularyName": "medspa-vocabulary"
+}
+```
+**Result**: ✅ PASS — `vocabularyName: "medspa-vocabulary"` in config.json
+
+---
+
+## Summary
+
+| Check | Detail | Result |
+|-------|--------|--------|
+| Vocabulary exists | medspa-vocabulary | ✅ PASS |
+| Vocabulary status | READY | ✅ PASS |
+| Language | en-US | ✅ PASS |
+| Required terms (21) | All present | ✅ PASS |
+| Total terms | 41 | ✅ PASS |
+| Config reference | vocabularyName in config.json | ✅ PASS |
+
+**All 6 checks passed.**
