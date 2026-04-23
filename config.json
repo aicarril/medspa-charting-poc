@@ -1,0 +1,8 @@
+{
+  "region": "us-east-1",
+  "s3Bucket": "medspa-storage-779846822196",
+  "chartsTable": "medspa-charts",
+  "templatesTable": "medspa-templates",
+  "lambdaRoleArn": "arn:aws:iam::779846822196:role/medspa-lambda-role",
+  "vocabularyName": "medspa-vocabulary"
+}

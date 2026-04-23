@@ -1,0 +1,42 @@
+Phrase	IPA	SoundsLike	DisplayAs
+Botox			Botox
+Dysport			Dysport
+Juvederm			Juvederm
+Restylane			Restylane
+microneedling			microneedling
+dermaplaning			dermaplaning
+chemical-peel			chemical peel
+IPL			IPL
+laser-resurfacing			laser resurfacing
+hyaluronic-acid			hyaluronic acid
+platelet-rich-plasma			platelet-rich plasma
+PRP			PRP
+subcutaneous			subcutaneous
+intramuscular			intramuscular
+erythema			erythema
+edema			edema
+contraindication			contraindication
+informed-consent			informed consent
+pre-treatment			pre-treatment
+post-treatment			post-treatment
+glabella			glabella
+neuromodulator			neuromodulator
+dermal-filler			dermal filler
+Sculptra			Sculptra
+Radiesse			Radiesse
+Kybella			Kybella
+nasolabial-folds			nasolabial folds
+marionette-lines			marionette lines
+crows-feet			crow's feet
+forehead-lines			forehead lines
+periorbital			periorbital
+submental			submental
+lidocaine			lidocaine
+epinephrine			epinephrine
+cannula			cannula
+aspiration			aspiration
+blanching			blanching
+Tyndall-effect			Tyndall effect
+vascular-occlusion			vascular occlusion
+units			units
+syringes			syringes
