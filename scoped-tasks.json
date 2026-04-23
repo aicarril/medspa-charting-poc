@@ -1,0 +1,107 @@
+{
+  "originalTask": "Build Architecture 1 — Transcribe + Custom Vocabulary + Chart Agent. A medical spa POC where a provider taps Start Session, streams audio to Amazon Transcribe Streaming with Custom Vocabulary, sees live transcription, then sends the full transcript to Bedrock Claude to extract structured chart fields. Supports live session and post-session dictation modes. Stores raw transcript and extracted chart in DynamoDB/S3. Demo UI shows the full flow.",
+  "subtasks": [
+    {
+      "id": 1,
+      "title": "S3 bucket and DynamoDB tables for storage",
+      "description": "Create an S3 bucket for raw transcript/audio storage and two DynamoDB tables: one for chart records (PK: sessionId) and one for chart templates (PK: templateId). Include IAM roles/policies for Lambda access. Deploy via Terraform or CDK.",
+      "dependencies": [],
+      "services": ["S3", "DynamoDB", "IAM"],
+      "verificationCriteria": [
+        "S3 bucket exists and accepts PutObject",
+        "Charts DynamoDB table exists with sessionId as partition key",
+        "Templates DynamoDB table exists with templateId as partition key",
+        "IAM role exists with read/write access to both resources",
+        "Can write and read a test item to DynamoDB via AWS CLI",
+        "Can upload and retrieve a test file from S3 via AWS CLI"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Custom Vocabulary for medical spa terminology",
+      "description": "Create an Amazon Transcribe Custom Vocabulary with medical spa terms (Botox, Dysport, Juvederm, Restylane, microneedling, dermaplaning, chemical peel, IPL, laser resurfacing, hyaluronic acid, platelet-rich plasma, PRP, subcutaneous, intramuscular, erythema, edema, contraindication, informed consent, pre-treatment, post-treatment, glabella, etc.). Deploy and wait for READY status.",
+      "dependencies": [],
+      "services": ["Transcribe"],
+      "verificationCriteria": [
+        "Custom Vocabulary exists in Transcribe with status READY",
+        "Vocabulary contains all required medical spa terms",
+        "Vocabulary name is stored in config for reference by the browser SDK"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Chart templates seeded in DynamoDB",
+      "description": "Define JSON chart templates for Neuromodulator Treatment Form (primary), Filler Treatment Form, and Aesthetic Treatment Form. Store in the templates DynamoDB table. Include a seed script or Lambda. Templates define the fields the LLM must extract.",
+      "dependencies": [1],
+      "services": ["DynamoDB", "Lambda"],
+      "verificationCriteria": [
+        "Templates table contains at least 3 chart templates",
+        "Neuromodulator template matches the sample JSON schema from task.md",
+        "Templates are retrievable by templateId"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cognito Identity Pool for browser Transcribe access",
+      "description": "Create a Cognito Identity Pool with unauthenticated access (sufficient for POC). Attach an IAM role that grants transcribe:StartStreamTranscription permission and scoped S3/DynamoDB access. The browser will use these temporary credentials to call Transcribe Streaming directly via the AWS SDK, eliminating the need for a WebSocket relay Lambda.",
+      "dependencies": [],
+      "services": ["Cognito", "IAM"],
+      "verificationCriteria": [
+        "Cognito Identity Pool exists with unauthenticated access enabled",
+        "Unauthenticated IAM role has transcribe:StartStreamTranscription permission",
+        "Browser can obtain temporary credentials via the Identity Pool",
+        "Temporary credentials can successfully call Transcribe Streaming"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Bedrock Claude chart extraction Lambda",
+      "description": "Create a Lambda function that takes a full transcript and templateId, retrieves the template from DynamoDB, sends the transcript to Bedrock Claude with a prompt to extract structured fields into the template, and returns filled chart JSON. Dual-pass: first pass extracts, second pass scores confidence. Stores result in DynamoDB (chart record) and S3 (raw transcript).",
+      "dependencies": [1, 3],
+      "services": ["Lambda", "Bedrock", "DynamoDB", "S3"],
+      "verificationCriteria": [
+        "Lambda invocation with a sample transcript returns valid chart JSON",
+        "Extracted chart matches the template schema (all fields present)",
+        "Medical spa terms are correctly extracted (Botox units, treatment areas)",
+        "Chart record saved to DynamoDB with sessionId",
+        "Raw transcript saved to S3",
+        "Confidence scores present in response"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "REST API for chart CRUD and session management",
+      "description": "Create an API Gateway HTTP API with endpoints: POST /sessions (create), GET /sessions/{id} (get transcript + chart), PUT /sessions/{id}/chart (update after review), GET /templates (list templates), POST /sessions/{id}/extract (trigger Bedrock extraction). Lambda-backed. CORS enabled.",
+      "dependencies": [1, 3, 5],
+      "services": ["API Gateway (HTTP)", "Lambda", "DynamoDB"],
+      "verificationCriteria": [
+        "All endpoints return correct HTTP status codes",
+        "POST /sessions creates a DynamoDB record",
+        "GET /sessions/{id} returns transcript and chart",
+        "PUT /sessions/{id}/chart updates chart in DynamoDB",
+        "POST /sessions/{id}/extract triggers Bedrock and returns filled chart",
+        "GET /templates returns chart templates list",
+        "CORS headers present for browser access"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Demo UI — provider charting interface",
+      "description": "Single-page HTML/JS app hosted on S3. Uses AWS SDK for JS v3 in the browser to stream audio directly to Transcribe Streaming (via Cognito temp credentials) with Custom Vocabulary. Layout: left panel = live transcript, right panel = chart fields. Start/End Session buttons, template selector. End Session triggers REST API chart extraction, populates fields. Provider can edit and Save. Includes post-session dictation mode toggle and sample dictation text for non-technical demos.",
+      "dependencies": [2, 4, 5, 6],
+      "services": ["S3", "CloudFront"],
+      "verificationCriteria": [
+        "Page loads in browser with all UI elements visible",
+        "Start Session activates microphone and streams to Transcribe",
+        "Live transcript text appears as audio is captured",
+        "Custom Vocabulary terms transcribe correctly (Botox, Juvederm, etc.)",
+        "End Session triggers chart extraction via REST API",
+        "Chart fields populate on right panel after extraction",
+        "Fields are editable and Save persists to DynamoDB via REST API",
+        "Template selector switches between Neuromodulator, Filler, Aesthetic forms",
+        "Post-session dictation mode works",
+        "Sample dictation text provided for demo"
+      ]
+    }
+  ]
+}
